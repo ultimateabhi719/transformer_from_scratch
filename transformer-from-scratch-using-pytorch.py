@@ -168,7 +168,7 @@ class Transformer(nn.Module):
     def generate_mask(self, src_mask, tgt_mask):
         src_mask = src_mask.unsqueeze(1).unsqueeze(2)
         tgt_mask = tgt_mask.unsqueeze(1).unsqueeze(3)
-        seq_length = tgt_mask.size(1)
+        seq_length = tgt_mask.size(2)
         nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
         tgt_mask = tgt_mask & nopeak_mask.to(self.device)
         return src_mask, tgt_mask
@@ -256,6 +256,11 @@ def load_tokenizers(path_hi, path_en):
 # ## Create Dataloader
 def dataloaders(dataset_path, BS = 2, subset_len = None):
     # dataset_path = "cfilt/iitb-english-hindi"
+
+    seed = 42
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+
     dataset = load_dataset(dataset_path)
 
     print("train dataset length:", len(dataset['train']))
@@ -275,21 +280,21 @@ def dataloaders(dataset_path, BS = 2, subset_len = None):
 
     return train_loader, val_loader, test_loader
 
-def train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, epochs=10):
+def train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, BS=None, epochs=10):
+    assert BS is not None
+
     optimizer = optim.Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-9)
 
     model.train();
 
+    loss_history = []
     for epoch in range(epochs):
         epoch_loss = 0
-        num_train_batches = len(train_loader)
-
-        batch = 0
-        for b in tqdm(train_loader):
+        pbar = tqdm(train_loader)
+        for batch, b in enumerate(pbar):
             if (batch+1%40000)==0:
                 PATH = f"./transformer_epoch_{epoch}_batch_{batch}.pth"
                 torch.save(model.state_dict(), PATH)
-                print(f"file saved: {PATH}", flush=True)
 
             hi_token = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")
             en_token = en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")
@@ -308,21 +313,21 @@ def train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, epoc
             optimizer.step()
             
             epoch_loss += loss.item()
-            
-            batch += 1
+            pbar.set_description(f"Epoch: {epoch}, Loss: {epoch_loss/(batch+1)/BS:.5f} ")
 
-        print(f"Epoch: {epoch}, Loss: {epoch_loss/num_train_batches}")
+        loss_history.append(epoch_loss/len(train_loader)/BS)
 
-    return model
+
+    return loss_history
     
 
 # # Evaluate
-def evaluate_model(model, hi_tokenizer, en_tokenizer, data_loader, criterion):
+def evaluate_model(model, hi_tokenizer, en_tokenizer, data_loader, criterion, print_out = False):
     model.eval()
     num_batches = len(data_loader)
 
     total_loss = 0
-    for b in data_loader:
+    for b in tqdm(data_loader):
 
         hi_token = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")
         en_token = en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")
@@ -337,11 +342,12 @@ def evaluate_model(model, hi_tokenizer, en_tokenizer, data_loader, criterion):
 
         total_loss += criterion(out_probs.contiguous().view(-1, len(en_tokenizer)), en_output[:, 1:].contiguous().view(-1).to(device)).item()
         
-        print("model:",*list(map(en_tokenizer.decode, out_labels)), sep='\n')
-        print("\ntarget:",*list(map(en_tokenizer.decode, en_output)), sep='\n')
-        print('------------\n')
+        if print_out:
+            print("model:",*list(map(en_tokenizer.decode, out_labels)), sep='\n')
+            print("\ntarget:",*list(map(en_tokenizer.decode, en_output)), sep='\n')
+            print('------------\n')
 
-    return total_loss/num_batches
+    return total_loss/num_batches/en_output.shape[0]
 
 
 
@@ -355,6 +361,7 @@ if __name__ == '__main__':
     d_ff = 2048
     max_seq_length = 1024
     dropout = 0.1
+    BS = 2
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -363,18 +370,18 @@ if __name__ == '__main__':
                               pad_token_tgt = en_tokenizer.pad_token_id, device = device)
 
 
-    train_loader, val_loader, test_loader = dataloaders("cfilt/iitb-english-hindi", BS = 2, subset_len = 16)
+    train_loader, val_loader, test_loader = dataloaders("cfilt/iitb-english-hindi", BS = BS, subset_len = None)
 
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
-    # model = train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, epochs=100)
+    loss_history = train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, BS = BS, epochs=10)
 
     ## Save & Load Model
-    PATH = "./transformer_overfit.pth"
+    # PATH = "./transformer_overfit.pth"
     # torch.save(model.state_dict(), PATH)
-    model.load_state_dict(torch.load(PATH))
+    # model.load_state_dict(torch.load(PATH))
 
-    avg_loss = evaluate_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion)
+    avg_loss = evaluate_model(model, hi_tokenizer, en_tokenizer, val_loader, criterion, print_out = False)
 
     print('eval_loss :', avg_loss)
 
