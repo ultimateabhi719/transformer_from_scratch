@@ -154,7 +154,7 @@ class DecoderLayer(nn.Module):
 # ## Transformer
 # Merging it all together
 class Transformer(nn.Module):
-    def __init__(self, src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout, pad_token_src = 0, pad_token_tgt = 0, device = 'cpu'):
+    def __init__(self, src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout, pad_token_src = 0, pad_token_tgt = 0):
         super(Transformer, self).__init__()
         self.encoder_embedding = nn.Embedding(src_vocab_size, d_model)
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
@@ -268,7 +268,7 @@ def load_tokenizers(path_hi, path_en):
 
 
 # ## Create Dataloader
-def prepare_dataset(dataset_path, BS = 2, subset_len = None):
+def prepare_dataset(dataset_path, bs = 2, subset_len = None):
     # dataset_path = "cfilt/iitb-english-hindi"
 
     seed = 42
@@ -297,13 +297,13 @@ def prepare_dataloader(dataset, rank, world_size, batch_size=32, pin_memory=Fals
     return dataloader
 
 def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokenizer, 
-    criterion, BS=None, epochs=10):
-    assert BS is not None
+    criterion, bs=None, epochs=10, save_path = "./transformer_epoch_{}_batch_{}.pth"):
+    assert bs is not None
 
     # setup the process groups
     setup(rank, world_size)
     # prepare the dataloader
-    dataloader = prepare_dataloader(dataset, rank, world_size, batch_size=BS)
+    dataloader = prepare_dataloader(dataset, rank, world_size, batch_size=bs)
     
     # instantiate the model(it's your own model) and move it to the right device
     model = transformer.to(rank)
@@ -325,8 +325,7 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
         pbar = tqdm(dataloader)
         for batch, b in enumerate(pbar):
             if (batch+1%40000)==0:
-                PATH = f"./transformer_epoch_{epoch}_batch_{batch}.pth"
-                torch.save(model.state_dict(), PATH)
+                torch.save(model.module.state_dict(), "./transformer_epoch_{}_batch_{}.pth".format(epoch,batch))
 
             hi_token = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")
             en_token = en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")
@@ -345,9 +344,12 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
             optimizer.step()
             
             epoch_loss += loss.item()
-            pbar.set_description(f"Epoch: {epoch}, Loss: {epoch_loss/(batch+1)/BS:.5f} ")
+            pbar.set_description(f"Epoch: {epoch}, Loss: {epoch_loss/(batch+1)/bs:.5f} ")
 
-        loss_history.append(epoch_loss/len(dataloader)/BS)
+        loss_history.append(epoch_loss/len(dataloader)/bs)
+
+    if rank==0:
+        torch.save(model.module.state_dict(), save_path.format('N','N'))
 
     cleanup()
 
@@ -394,31 +396,31 @@ if __name__ == '__main__':
     d_ff = 2048
     max_seq_length = 1024
     dropout = 0.1
-    BS = 2
+    bs = 2 # batch size
+    PATH = "./transformer_epoch_{}_batch_{}.pth"
 
     transformer = Transformer(src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, 
                               d_ff, max_seq_length, dropout, pad_token_src = hi_tokenizer.pad_token_id, 
-                              pad_token_tgt = en_tokenizer.pad_token_id, device = 'cpu')
+                              pad_token_tgt = en_tokenizer.pad_token_id)
 
-    dataset = prepare_dataset("cfilt/iitb-english-hindi", BS = 2, subset_len = 10)
+    dataset = prepare_dataset("cfilt/iitb-english-hindi", bs = bs, subset_len = None)
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
-    # loss_history = train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, BS = BS, epochs=10)
 
     world_size = torch.cuda.device_count()
+    print("using {world_size} GPUs.")
     mp.spawn(
         train_model,
-        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, BS, 2),
+        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, 10, PATH),
         nprocs=world_size
     )
 
-    ## Save & Load Model
-    PATH = "./tmp.pth"
-    torch.save(transformer.state_dict(), PATH)
-    transformer.load_state_dict(torch.load(PATH, map_location='cuda:0'))
+    ## Load Model
+    transformer.load_state_dict(torch.load(PATH.format('N','N'), map_location='cuda:0'))
 
-    eval_dataloader = prepare_dataloader(dataset['validation'], 0, 1, batch_size=BS, pin_memory=False, num_workers=0)
-    avg_loss = evaluate_model(transformer, hi_tokenizer, en_tokenizer, eval_dataloader, criterion, print_out = True)
+
+    eval_dataloader = prepare_dataloader(dataset['validation'], 0, 1, batch_size=bs, pin_memory=False, num_workers=0)
+    avg_loss = evaluate_model(transformer, hi_tokenizer, en_tokenizer, eval_dataloader, criterion, print_out = False)
 
     print('eval_loss :', avg_loss)
 
