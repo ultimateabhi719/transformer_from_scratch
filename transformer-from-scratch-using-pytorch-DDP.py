@@ -408,7 +408,7 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
 
     world_size = torch.cuda.device_count()
-    print("using {world_size} GPUs.")
+    print(f"using {world_size} GPUs.")
     mp.spawn(
         train_model,
         args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, 10, PATH),
