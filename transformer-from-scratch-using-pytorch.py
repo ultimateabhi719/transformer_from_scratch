@@ -292,7 +292,7 @@ def train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, BS=N
         epoch_loss = 0
         pbar = tqdm(train_loader)
         for batch, b in enumerate(pbar):
-            if (batch+1%40000)==0:
+            if (batch+1)%40000==0:
                 PATH = f"./transformer_epoch_{epoch}_batch_{batch}.pth"
                 torch.save(model.state_dict(), PATH)
 
@@ -361,7 +361,7 @@ if __name__ == '__main__':
     d_ff = 2048
     max_seq_length = 1024
     dropout = 0.1
-    BS = 2
+    BS = 4
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

@@ -297,7 +297,7 @@ def prepare_dataloader(dataset, rank, world_size, batch_size=32, pin_memory=Fals
     return dataloader
 
 def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokenizer, 
-    criterion, bs=None, epochs=10, save_path = "./transformer_epoch_{}_batch_{}.pth"):
+    criterion, bs=None, epochs=10, save_path = "./transformer_epoch_{}_batch_{}.pth", save_freq = 40000):
     assert bs is not None
 
     # setup the process groups
@@ -322,9 +322,9 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
     for epoch in range(epochs):
         dataloader.sampler.set_epoch(epoch)
         epoch_loss = 0
-        pbar = tqdm(dataloader)
+        pbar = tqdm(dataloader) if rank == 0 else dataloader
         for batch, b in enumerate(pbar):
-            if (batch+1%40000)==0:
+            if ((batch+1)%save_freq)==0 and rank == 0:
                 torch.save(model.module.state_dict(), "./transformer_epoch_{}_batch_{}.pth".format(epoch,batch))
 
             hi_token = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")
@@ -344,12 +344,13 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
             optimizer.step()
             
             epoch_loss += loss.item()
-            pbar.set_description(f"Epoch: {epoch}, Loss: {epoch_loss/(batch+1)/bs:.5f} ")
+            if rank == 0:
+                pbar.set_description(f"Epoch: {epoch}, Loss: {epoch_loss/(batch+1)/bs:.5f} ")
 
         loss_history.append(epoch_loss/len(dataloader)/bs)
 
-    if rank==0:
-        torch.save(model.module.state_dict(), save_path.format('N','N'))
+        if rank==0:
+            torch.save(model.module.state_dict(), save_path.format(epoch,'N'))
 
     cleanup()
 
@@ -396,7 +397,7 @@ if __name__ == '__main__':
     d_ff = 2048
     max_seq_length = 1024
     dropout = 0.1
-    bs = 2 # batch size
+    bs = 8 # batch size
     PATH = "./transformer_epoch_{}_batch_{}.pth"
 
     transformer = Transformer(src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, 
@@ -411,7 +412,7 @@ if __name__ == '__main__':
     print(f"using {world_size} GPUs.")
     mp.spawn(
         train_model,
-        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, 10, PATH),
+        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, 10, PATH, 10000),
         nprocs=world_size
     )
 
