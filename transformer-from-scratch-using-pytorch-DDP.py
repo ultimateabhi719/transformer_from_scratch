@@ -399,10 +399,15 @@ if __name__ == '__main__':
     dropout = 0.1
     bs = 8 # batch size
     PATH = "./transformer_epoch_{}_batch_{}.pth"
+    resume_path = "transformer_epoch_0_batch_9999.pth"
+
 
     transformer = Transformer(src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, 
                               d_ff, max_seq_length, dropout, pad_token_src = hi_tokenizer.pad_token_id, 
                               pad_token_tgt = en_tokenizer.pad_token_id)
+    if resume_path:
+        transformer = transformer.load_state_dict(torch.load(resume_path, map_location='cpu'))
+
 
     dataset = prepare_dataset("cfilt/iitb-english-hindi", bs = bs, subset_len = None)
 
