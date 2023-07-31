@@ -8,17 +8,17 @@ import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 import math
 import numpy as np
+import pandas as pd
 import copy
-
-from datasets import load_dataset
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as data
-
+from torch.utils.tensorboard import SummaryWriter
 
 from transformers import AutoTokenizer
+from datasets import load_dataset
 
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
@@ -281,7 +281,6 @@ def prepare_dataset(dataset_path, bs = 2, subset_len = None):
     print("validation dataset length:", len(dataset['validation']))
     print("test dataset length:", len(dataset['test']))
 
-
     if subset_len:
         subset = list(range(0, subset_len))
         dataset['train'] = torch.utils.data.Subset(dataset['train'], subset)
@@ -290,15 +289,18 @@ def prepare_dataset(dataset_path, bs = 2, subset_len = None):
     return dataset
 
 def prepare_dataloader(dataset, rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=False)
     
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, drop_last=False, shuffle=False, sampler=sampler)
     
     return dataloader
 
 def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokenizer, 
-    criterion, bs=None, epochs=10, save_path = "./transformer_epoch_{}_batch_{}.pth", save_freq = 40000):
+    criterion, bs=None, epochs=10, save_path = "./transformer_epoch_{}_batch_{}.pth", save_freq = 40000, log_path = None):
     assert bs is not None
+
+    if log_path and rank == 0:
+        log_writer = SummaryWriter(log_path)
 
     # setup the process groups
     setup(rank, world_size)
@@ -318,11 +320,13 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
 
     model.train();
 
-    loss_history = []
+    epoch_loss = 0
     for epoch in range(epochs):
         dataloader.sampler.set_epoch(epoch)
-        epoch_loss = 0
         pbar = tqdm(dataloader) if rank == 0 else dataloader
+        if rank == 0:
+            pbar.set_description(f"Epoch: {epoch}, Loss: {epoch_loss/len(dataloader):.5f} ")
+        epoch_loss = 0
         for batch, b in enumerate(pbar):
             if ((batch+1)%save_freq)==0 and rank == 0:
                 torch.save(model.module.state_dict(), "./transformer_epoch_{}_batch_{}.pth".format(epoch,batch))
@@ -344,17 +348,21 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
             optimizer.step()
             
             epoch_loss += loss.item()
-            if rank == 0:
-                pbar.set_description(f"Epoch: {epoch}, Loss: {epoch_loss/(batch+1)/bs:.5f} ")
 
-        loss_history.append(epoch_loss/len(dataloader)/bs)
+            if log_path and rank == 0:
+                log_writer.add_scalar('training loss', loss.item(), epoch * len(dataloader) + batch)
+                log_writer.add_scalar('seq length hindi', hi_input.shape[1], epoch * len(dataloader) + batch)
+                log_writer.add_scalar('seq length eng', en_output.shape[1], epoch * len(dataloader) + batch)
+
 
         if rank==0:
             torch.save(model.module.state_dict(), save_path.format(epoch,'N'))
 
+    if log_path and rank == 0:
+        log_writer.close()
+
     cleanup()
 
-    return loss_history
     
 
 # # Evaluate
@@ -397,9 +405,13 @@ if __name__ == '__main__':
     d_ff = 2048
     max_seq_length = 1024
     dropout = 0.1
-    bs = 8 # batch size
-    PATH = "./transformer_epoch_{}_batch_{}.pth"
-    resume_path = "transformer_epoch_0_batch_9999.pth"
+    bs = 3 # batch size
+
+    save_prefix = 'runs/ddp_run1'
+    save_path = save_prefix+"/transformer_epoch_{}_batch_{}.pth"
+    save_freq = 5000
+
+    resume_path = None
 
 
     transformer = Transformer(src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, 
@@ -417,12 +429,12 @@ if __name__ == '__main__':
     print(f"using {world_size} GPUs.")
     mp.spawn(
         train_model,
-        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, 10, PATH, 10000),
+        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, 10, save_path, 10000, save_prefix),
         nprocs=world_size
     )
 
     ## Load Model
-    transformer.load_state_dict(torch.load(PATH.format('N','N'), map_location='cuda:0'))
+    transformer.load_state_dict(torch.load(save_path.format('N','N'), map_location='cuda:0'))
 
 
     eval_dataloader = prepare_dataloader(dataset['validation'], 0, 1, batch_size=bs, pin_memory=False, num_workers=0)
