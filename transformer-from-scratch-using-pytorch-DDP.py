@@ -329,7 +329,7 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
         epoch_loss = 0
         for batch, b in enumerate(pbar):
             if ((batch+1)%save_freq)==0 and rank == 0:
-                torch.save(model.module.state_dict(), "./transformer_epoch_{}_batch_{}.pth".format(epoch,batch))
+                torch.save(model.module.state_dict(), save_path.format(epoch,batch))
 
             hi_token = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")
             en_token = en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")
@@ -405,11 +405,12 @@ if __name__ == '__main__':
     d_ff = 2048
     max_seq_length = 1024
     dropout = 0.1
-    bs = 3 # batch size
 
+    epochs = 10
+    bs = 3 # batch size
     save_prefix = 'runs/ddp_run1'
     save_path = save_prefix+"/transformer_epoch_{}_batch_{}.pth"
-    save_freq = 5000
+    save_freq = 10000
 
     resume_path = None
 
@@ -429,7 +430,7 @@ if __name__ == '__main__':
     print(f"using {world_size} GPUs.")
     mp.spawn(
         train_model,
-        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, 10, save_path, 10000, save_prefix),
+        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, epochs, save_path, save_freq, save_prefix),
         nprocs=world_size
     )
 
