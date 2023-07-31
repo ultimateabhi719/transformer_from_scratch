@@ -7,13 +7,14 @@
 from tqdm.auto import tqdm
 import math
 import numpy as np
+import pandas as pd
 import copy
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as data
-
+from torch.utils.tensorboard import SummaryWriter
 
 import transformers
 from transformers import AutoTokenizer
@@ -254,7 +255,7 @@ def load_tokenizers(path_hi, path_en):
 
 
 # ## Create Dataloader
-def dataloaders(dataset_path, BS = 2, subset_len = None):
+def dataloaders(dataset_path, bs = 2, subset_len = None):
     # dataset_path = "cfilt/iitb-english-hindi"
 
     seed = 42
@@ -266,60 +267,72 @@ def dataloaders(dataset_path, BS = 2, subset_len = None):
     print("train dataset length:", len(dataset['train']))
     print("validation dataset length:", len(dataset['validation']))
     print("test dataset length:", len(dataset['test']))
+    print()
 
+
+    # df = pd.read_csv('token_size.csv')
+    # dataset['train'] = torch.utils.data.Subset(dataset['train'], list(df['index']))
 
     if subset_len:
         subset = list(range(0, subset_len))
         dataset['train'] = torch.utils.data.Subset(dataset['train'], subset)
         dataset['validation'] = torch.utils.data.Subset(dataset['validation'], subset)
 
-
-    train_loader = torch.utils.data.DataLoader(dataset['train'], batch_size=BS, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(dataset['validation'], batch_size=BS, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(dataset['test'], batch_size=BS, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(dataset['train'], batch_size=bs, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(dataset['validation'], batch_size=bs, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(dataset['test'], batch_size=bs, shuffle=True)
 
     return train_loader, val_loader, test_loader
 
-def train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, BS=None, epochs=10):
-    assert BS is not None
-
+def train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, epochs=10, save_path="./transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None):
     optimizer = optim.Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-9)
 
     model.train();
 
-    loss_history = []
+    epoch_loss = 0
     for epoch in range(epochs):
-        epoch_loss = 0
         pbar = tqdm(train_loader)
+        pbar.set_description(f"Epoch {epoch}: loss : {epoch_loss/len(train_loader):.5f}")
+        epoch_loss = 0
         for batch, b in enumerate(pbar):
-            if (batch+1)%40000==0:
-                PATH = f"./transformer_epoch_{epoch}_batch_{batch}.pth"
-                torch.save(model.state_dict(), PATH)
+            if (batch+1)%save_freq==0:
+                torch.save(model.state_dict(), save_path.format(epoch,batch))
 
-            hi_token = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")
-            en_token = en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")
+            try:
+                hi_token = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")
+                en_token = en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")
+                
+                hi_input = hi_token['input_ids'].to(device)
+                hi_masks = hi_token['attention_mask'].to(device)
+                
+                en_output = en_token['input_ids'].to(device)
+                en_masks = en_token['attention_mask'].to(device)
+
+                optimizer.zero_grad()
+                output = model(hi_input, en_output[:, :-1], mask = {'src_mask':hi_masks, 'tgt_mask':en_masks[:, :-1]})
+                loss = criterion(output.contiguous().view(-1, len(en_tokenizer)), en_output[:, 1:].contiguous().view(-1))
+                loss.backward()
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
             
-            hi_input = hi_token['input_ids'].to(device)
-            hi_masks = hi_token['attention_mask'].to(device)
-            
-            en_output = en_token['input_ids'].to(device)
-            en_masks = en_token['attention_mask'].to(device)
-            
-            optimizer.zero_grad()
-            output = model(hi_input, en_output[:, :-1], mask = {'src_mask':hi_masks, 'tgt_mask':en_masks[:, :-1]})
-            loss = criterion(output.contiguous().view(-1, len(en_tokenizer)), en_output[:, 1:].contiguous().view(-1).to(device))
-            loss.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-            
+            except Exception as error:
+                import traceback
+                print(''.join(traceback.TracebackException.from_exception(error).format()))
+                import ipdb;
+                ipdb.set_trace()
+                print()
+
             epoch_loss += loss.item()
-            pbar.set_description(f"Epoch: {epoch}, Loss: {epoch_loss/(batch+1)/BS:.5f} ")
+            if log_writer:
+                log_writer.add_scalar('training loss', loss.item(), epoch * len(train_loader) + batch)
+                torch.cuda.empty_cache()
+                log_writer.add_scalar('memory allocated', torch.cuda.memory_allocated(model.device)/1024/1024, epoch * len(train_loader) + batch)
+                log_writer.add_scalar('seq length', hi_input.shape[1], epoch * len(train_loader) + batch)
 
-        loss_history.append(epoch_loss/len(train_loader)/BS)
+        torch.save(model.state_dict(), save_path.format(epoch,'N'))
 
 
-    return loss_history
-    
+        
 
 # # Evaluate
 def evaluate_model(model, hi_tokenizer, en_tokenizer, data_loader, criterion, print_out = False):
@@ -361,7 +374,12 @@ if __name__ == '__main__':
     d_ff = 2048
     max_seq_length = 1024
     dropout = 0.1
-    BS = 4
+
+    bs = 4 # batch_size
+    save_prefix = 'runs/debug_memory_gpu4'
+    save_path = save_prefix+"/transformer_epoch_{}_batch_{}.pth"
+    save_freq = 5000
+    writer = SummaryWriter(save_prefix)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -370,11 +388,13 @@ if __name__ == '__main__':
                               pad_token_tgt = en_tokenizer.pad_token_id, device = device)
 
 
-    train_loader, val_loader, test_loader = dataloaders("cfilt/iitb-english-hindi", BS = BS, subset_len = None)
+    train_loader, val_loader, test_loader = dataloaders("cfilt/iitb-english-hindi", bs = bs, subset_len = None)
 
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
-    loss_history = train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, BS = BS, epochs=10)
+    train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, epochs=10, save_path=save_path, save_freq=save_freq, log_writer = writer)
+
+    writer.close()
 
     ## Save & Load Model
     # PATH = "./transformer_overfit.pth"
