@@ -310,53 +310,10 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
     if log_path and rank == 0:
         log_writer = SummaryWriter(log_path)
 
-    
-    # if rank==0:
-    #     print("len dataset:",len(dataset))
-    #     print("computing max tokens (dataset)..")
-    #     max_token = -1
-    #     pbar = tqdm(dataset)
-    #     try:
-    #         for b in pbar:
-    #             tmp = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1] + en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1]
-    #             if tmp>max_token:
-    #                 max_token = tmp
-    #                 pbar.set_description(f"max:{max_token}")
-    #     except  Exception as ex:
-    #         import traceback
-    #         print(''.join(traceback.TracebackException.from_exception(ex).format()))
-    #         import ipdb
-    #         ipdb.set_trace()
-    #     print(f"max token sum: {max_token}")
-    #     print()
-    #     print()
-
     # setup the process groups
     setup(rank, world_size)
     # prepare the dataloader
     dataloader = prepare_dataloader(dataset, rank, world_size, batch_size=bs, shuffle = shuffle)
-    
-    # if rank==0:
-    #     print("len dataloader:",len(dataloader))
-    #     print("computing max tokens (dataloader)..")
-    #     max_token = -1
-    #     pbar = tqdm(dataloader)
-    #     try:
-    #         for b in pbar:
-    #             tmp = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1] + en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1]
-    #             if tmp>max_token:
-    #                 max_token = tmp
-    #                 pbar.set_description(f"max:{max_token}")
-    #         print("SHAPE", hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape)
-    #         print("SHAPE", en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape)
-    #     except  Exception as ex:
-    #         import traceback
-    #         print(''.join(traceback.TracebackException.from_exception(ex).format()))
-    #         import ipdb
-    #         ipdb.set_trace()
-    #     print(f"max token sum: {max_token}")
-    #     print()
-    #     print()
 
     # instantiate the model(it's your own model) and move it to the right device
     model = transformer.to(rank)
