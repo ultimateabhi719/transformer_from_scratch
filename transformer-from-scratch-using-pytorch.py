@@ -387,7 +387,7 @@ if __name__ == '__main__':
                               d_ff, max_seq_length, dropout, pad_token_src = hi_tokenizer.pad_token_id, 
                               pad_token_tgt = en_tokenizer.pad_token_id, device = device)
 
-    train_loader, val_loader, test_loader = dataloaders("cfilt/iitb-english-hindi", bs = bs, subset_len = 300, max_len = 300, token_size_data = "train_token_size.csv", shuffle = True)
+    train_loader, val_loader, test_loader = dataloaders("cfilt/iitb-english-hindi", bs = bs, subset_len = None, max_len = 300, token_size_data = "train_token_size.csv", shuffle = True)
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
     writer = SummaryWriter(save_prefix)

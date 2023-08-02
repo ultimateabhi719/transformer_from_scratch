@@ -413,12 +413,12 @@ if __name__ == '__main__':
     dropout = 0.1
 
     epochs = 100
-    bs = 20 # batch size
-    save_prefix = 'runs/ddp_max_tokens_300_subseu_len_50'
+    bs = 10 # batch size
+    save_prefix = 'runs/ddp_max_tokens_300'
     save_path = save_prefix+"/transformer_epoch_{}_batch_{}.pth"
     save_freq = 10000
 
-    resume_path = None
+    resume_path = 'runs/ddp_whole_dataset/transformer_epoch_1_batch_N.pth'
 
 
     transformer = Transformer(src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, 
@@ -428,7 +428,7 @@ if __name__ == '__main__':
         transformer = transformer.load_state_dict(torch.load(resume_path, map_location='cpu'))
 
 
-    dataset = prepare_dataset("cfilt/iitb-english-hindi", subset_len = 50, max_len = 300, token_size_data = "train_token_size.csv")
+    dataset = prepare_dataset("cfilt/iitb-english-hindi", subset_len = None, max_len = 300, token_size_data = "train_token_size.csv")
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
 
@@ -436,7 +436,7 @@ if __name__ == '__main__':
     print(f"using {world_size} GPUs.")
     mp.spawn(
         train_model,
-        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, epochs, save_path, save_freq, save_prefix, False),
+        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, epochs, save_path, save_freq, save_prefix, True),
         nprocs=world_size
     )
 
