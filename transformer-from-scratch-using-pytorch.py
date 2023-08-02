@@ -255,7 +255,7 @@ def load_tokenizers(path_hi, path_en):
 
 
 # ## Create Dataloader
-def dataloaders(dataset_path, bs = 2, subset_len = None, max_len = None, token_size_data = None):
+def dataloaders(dataset_path, bs = 2, subset_len = None, max_len = None, token_size_data = None, shuffle = True):
     # dataset_path = "cfilt/iitb-english-hindi"
 
     seed = 42
@@ -270,19 +270,19 @@ def dataloaders(dataset_path, bs = 2, subset_len = None, max_len = None, token_s
         df = pd.read_csv(token_size_data)
         dataset['train'] = torch.utils.data.Subset(dataset['train'], indices = list(df['index'][df.hi_en<=max_len]))
 
-    print("train dataset length:", len(dataset['train']))
-    print("validation dataset length:", len(dataset['validation']))
-    print("test dataset length:", len(dataset['test']))
-    print()
-
     if subset_len:
         subset = list(range(0, subset_len))
         dataset['train'] = torch.utils.data.Subset(dataset['train'], subset)
         dataset['validation'] = torch.utils.data.Subset(dataset['validation'], subset)
 
-    train_loader = torch.utils.data.DataLoader(dataset['train'], batch_size=bs, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(dataset['validation'], batch_size=bs, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(dataset['test'], batch_size=bs, shuffle=True)
+    print("train dataset length:", len(dataset['train']))
+    print("validation dataset length:", len(dataset['validation']))
+    print("test dataset length:", len(dataset['test']))
+    print()
+
+    train_loader = torch.utils.data.DataLoader(dataset['train'], batch_size=bs, shuffle=shuffle)
+    val_loader = torch.utils.data.DataLoader(dataset['validation'], batch_size=bs, shuffle=False)
+    test_loader = torch.utils.data.DataLoader(dataset['test'], batch_size=bs, shuffle=False)
 
     return train_loader, val_loader, test_loader
 
@@ -327,9 +327,7 @@ def train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, epoc
             epoch_loss += loss.item()
             if log_writer:
                 log_writer.add_scalar('training loss', loss.item(), epoch * len(train_loader) + batch)
-                torch.cuda.empty_cache()
-                log_writer.add_scalar('memory allocated', torch.cuda.memory_allocated(model.device)/1024/1024, epoch * len(train_loader) + batch)
-                log_writer.add_scalar('seq length', hi_input.shape[1], epoch * len(train_loader) + batch)
+                log_writer.add_scalar('hi_en seq length', hi_input.shape[1]+en_output.shape[1], epoch * len(train_loader) + batch)
 
         torch.save(model.state_dict(), save_path.format(epoch,'N'))
 
@@ -389,7 +387,7 @@ if __name__ == '__main__':
                               d_ff, max_seq_length, dropout, pad_token_src = hi_tokenizer.pad_token_id, 
                               pad_token_tgt = en_tokenizer.pad_token_id, device = device)
 
-    train_loader, val_loader, test_loader = dataloaders("cfilt/iitb-english-hindi", bs = bs, subset_len = None, max_len = 300, token_size_data = "train_token_size.csv")
+    train_loader, val_loader, test_loader = dataloaders("cfilt/iitb-english-hindi", bs = bs, subset_len = 300, max_len = 300, token_size_data = "train_token_size.csv", shuffle = True)
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
     writer = SummaryWriter(save_prefix)
