@@ -255,7 +255,7 @@ def load_tokenizers(path_hi, path_en):
 
 
 # ## Create Dataloader
-def dataloaders(dataset_path, bs = 2, subset_len = None):
+def dataloaders(dataset_path, bs = 2, subset_len = None, max_len = None, token_size_data = None):
     # dataset_path = "cfilt/iitb-english-hindi"
 
     seed = 42
@@ -264,14 +264,16 @@ def dataloaders(dataset_path, bs = 2, subset_len = None):
 
     dataset = load_dataset(dataset_path)
 
+    if max_len:
+        assert token_size_data is not None
+
+        df = pd.read_csv(token_size_data)
+        dataset['train'] = torch.utils.data.Subset(dataset['train'], indices = list(df['index'][df.hi_en<=max_len]))
+
     print("train dataset length:", len(dataset['train']))
     print("validation dataset length:", len(dataset['validation']))
     print("test dataset length:", len(dataset['test']))
     print()
-
-
-    # df = pd.read_csv('token_size.csv')
-    # dataset['train'] = torch.utils.data.Subset(dataset['train'], list(df['index']))
 
     if subset_len:
         subset = list(range(0, subset_len))
@@ -375,11 +377,11 @@ if __name__ == '__main__':
     max_seq_length = 1024
     dropout = 0.1
 
-    bs = 4 # batch_size
-    save_prefix = 'runs/debug_memory_gpu4'
+    epochs = 10
+    bs = 20 # batch_size
+    save_prefix = 'runs/gpu0_max_tokens_300'
     save_path = save_prefix+"/transformer_epoch_{}_batch_{}.pth"
     save_freq = 5000
-    writer = SummaryWriter(save_prefix)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -387,19 +389,15 @@ if __name__ == '__main__':
                               d_ff, max_seq_length, dropout, pad_token_src = hi_tokenizer.pad_token_id, 
                               pad_token_tgt = en_tokenizer.pad_token_id, device = device)
 
-
-    train_loader, val_loader, test_loader = dataloaders("cfilt/iitb-english-hindi", bs = bs, subset_len = None)
-
+    train_loader, val_loader, test_loader = dataloaders("cfilt/iitb-english-hindi", bs = bs, subset_len = None, max_len = 300, token_size_data = "train_token_size.csv")
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
-    train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, epochs=10, save_path=save_path, save_freq=save_freq, log_writer = writer)
-
+    writer = SummaryWriter(save_prefix)
+    train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, epochs=epochs, save_path=save_path, save_freq=save_freq, log_writer = writer)
     writer.close()
 
-    ## Save & Load Model
-    # PATH = "./transformer_overfit.pth"
-    # torch.save(model.state_dict(), PATH)
-    # model.load_state_dict(torch.load(PATH))
+    ## Load Model
+    model.load_state_dict(torch.load(save_path.format(epochs-1,'N')))
 
     avg_loss = evaluate_model(model, hi_tokenizer, en_tokenizer, val_loader, criterion, print_out = False)
 

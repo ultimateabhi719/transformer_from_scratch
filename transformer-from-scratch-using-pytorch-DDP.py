@@ -268,7 +268,7 @@ def load_tokenizers(path_hi, path_en):
 
 
 # ## Create Dataloader
-def prepare_dataset(dataset_path, bs = 2, subset_len = None):
+def prepare_dataset(dataset_path, subset_len = None, max_len = None, token_size_data = None):
     # dataset_path = "cfilt/iitb-english-hindi"
 
     seed = 42
@@ -277,36 +277,87 @@ def prepare_dataset(dataset_path, bs = 2, subset_len = None):
 
     dataset = load_dataset(dataset_path)
 
-    print("train dataset length:", len(dataset['train']))
-    print("validation dataset length:", len(dataset['validation']))
-    print("test dataset length:", len(dataset['test']))
+    print("input train dataset length:", len(dataset['train']))
+
+    if max_len:
+        assert token_size_data is not None
+
+        df = pd.read_csv(token_size_data)
+        dataset['train'] = torch.utils.data.Subset(dataset['train'], indices = list(df['index'][df.hi_en<=max_len]))
 
     if subset_len:
         subset = list(range(0, subset_len))
         dataset['train'] = torch.utils.data.Subset(dataset['train'], subset)
         dataset['validation'] = torch.utils.data.Subset(dataset['validation'], subset)
 
+    print("train dataset length:", len(dataset['train']))
+    print("validation dataset length:", len(dataset['validation']))
+    print("test dataset length:", len(dataset['test']))
+
     return dataset
 
-def prepare_dataloader(dataset, rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=False)
+def prepare_dataloader(dataset, rank, world_size, batch_size=32, pin_memory=False, num_workers=0, shuffle = True):
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=shuffle, drop_last=False)
     
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, drop_last=False, shuffle=False, sampler=sampler)
     
     return dataloader
 
 def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokenizer, 
-    criterion, bs=None, epochs=10, save_path = "./transformer_epoch_{}_batch_{}.pth", save_freq = 40000, log_path = None):
+    criterion, bs=None, epochs=10, save_path = "./transformer_epoch_{}_batch_{}.pth", save_freq = 40000, log_path = None, shuffle = True):
     assert bs is not None
 
     if log_path and rank == 0:
         log_writer = SummaryWriter(log_path)
 
+    
+    # if rank==0:
+    #     print("len dataset:",len(dataset))
+    #     print("computing max tokens (dataset)..")
+    #     max_token = -1
+    #     pbar = tqdm(dataset)
+    #     try:
+    #         for b in pbar:
+    #             tmp = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1] + en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1]
+    #             if tmp>max_token:
+    #                 max_token = tmp
+    #                 pbar.set_description(f"max:{max_token}")
+    #     except  Exception as ex:
+    #         import traceback
+    #         print(''.join(traceback.TracebackException.from_exception(ex).format()))
+    #         import ipdb
+    #         ipdb.set_trace()
+    #     print(f"max token sum: {max_token}")
+    #     print()
+    #     print()
+
     # setup the process groups
     setup(rank, world_size)
     # prepare the dataloader
-    dataloader = prepare_dataloader(dataset, rank, world_size, batch_size=bs)
+    dataloader = prepare_dataloader(dataset, rank, world_size, batch_size=bs, shuffle = shuffle)
     
+    # if rank==0:
+    #     print("len dataloader:",len(dataloader))
+    #     print("computing max tokens (dataloader)..")
+    #     max_token = -1
+    #     pbar = tqdm(dataloader)
+    #     try:
+    #         for b in pbar:
+    #             tmp = hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1] + en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1]
+    #             if tmp>max_token:
+    #                 max_token = tmp
+    #                 pbar.set_description(f"max:{max_token}")
+    #         print("SHAPE", hi_tokenizer(b['translation']['hi'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape)
+    #         print("SHAPE", en_tokenizer(b['translation']['en'], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape)
+    #     except  Exception as ex:
+    #         import traceback
+    #         print(''.join(traceback.TracebackException.from_exception(ex).format()))
+    #         import ipdb
+    #         ipdb.set_trace()
+    #     print(f"max token sum: {max_token}")
+    #     print()
+    #     print()
+
     # instantiate the model(it's your own model) and move it to the right device
     model = transformer.to(rank)
     
@@ -351,9 +402,7 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
 
             if log_path and rank == 0:
                 log_writer.add_scalar('training loss', loss.item(), epoch * len(dataloader) + batch)
-                log_writer.add_scalar('seq length hindi', hi_input.shape[1], epoch * len(dataloader) + batch)
-                log_writer.add_scalar('seq length eng', en_output.shape[1], epoch * len(dataloader) + batch)
-
+                log_writer.add_scalar('hi_en seq length', hi_input.shape[1]+en_output.shape[1], epoch * len(dataloader) + batch)
 
         if rank==0:
             torch.save(model.module.state_dict(), save_path.format(epoch,'N'))
@@ -406,9 +455,9 @@ if __name__ == '__main__':
     max_seq_length = 1024
     dropout = 0.1
 
-    epochs = 10
-    bs = 3 # batch size
-    save_prefix = 'runs/ddp_run1'
+    epochs = 100
+    bs = 20 # batch size
+    save_prefix = 'runs/ddp_max_tokens_300_subseu_len_50'
     save_path = save_prefix+"/transformer_epoch_{}_batch_{}.pth"
     save_freq = 10000
 
@@ -422,7 +471,7 @@ if __name__ == '__main__':
         transformer = transformer.load_state_dict(torch.load(resume_path, map_location='cpu'))
 
 
-    dataset = prepare_dataset("cfilt/iitb-english-hindi", bs = bs, subset_len = None)
+    dataset = prepare_dataset("cfilt/iitb-english-hindi", subset_len = 50, max_len = 300, token_size_data = "train_token_size.csv")
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
 
@@ -430,12 +479,12 @@ if __name__ == '__main__':
     print(f"using {world_size} GPUs.")
     mp.spawn(
         train_model,
-        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, epochs, save_path, save_freq, save_prefix),
+        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, epochs, save_path, save_freq, save_prefix, False),
         nprocs=world_size
     )
 
     ## Load Model
-    transformer.load_state_dict(torch.load(save_path.format('N','N'), map_location='cuda:0'))
+    transformer.load_state_dict(torch.load(save_path.format(epochs-1,'N'), map_location='cuda:0'))
 
 
     eval_dataloader = prepare_dataloader(dataset['validation'], 0, 1, batch_size=bs, pin_memory=False, num_workers=0)
