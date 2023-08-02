@@ -283,7 +283,8 @@ def prepare_dataset(dataset_path, subset_len = None, max_len = None, token_size_
         assert token_size_data is not None
 
         df = pd.read_csv(token_size_data)
-        dataset['train'] = torch.utils.data.Subset(dataset['train'], indices = list(df['index'][df.hi_en<=max_len]))
+
+        dataset['train'] = torch.utils.data.Subset(dataset['train'], indices = list(df['index'][(df.hi<=max_len//2) & (df.en<=max_len//2)]))
 
     if subset_len:
         subset = list(range(0, subset_len))
@@ -412,8 +413,8 @@ if __name__ == '__main__':
     max_seq_length = 1024
     dropout = 0.1
 
-    epochs = 100
-    bs = 10 # batch size
+    epochs = 10
+    bs = 24 # batch size
     save_prefix = 'runs/ddp_max_tokens_300'
     save_path = save_prefix+"/transformer_epoch_{}_batch_{}.pth"
     save_freq = 10000
