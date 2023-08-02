@@ -425,7 +425,7 @@ if __name__ == '__main__':
                               d_ff, max_seq_length, dropout, pad_token_src = hi_tokenizer.pad_token_id, 
                               pad_token_tgt = en_tokenizer.pad_token_id)
     if resume_path:
-        transformer = transformer.load_state_dict(torch.load(resume_path, map_location='cpu'))
+        transformer.load_state_dict(torch.load(resume_path))
 
 
     dataset = prepare_dataset("cfilt/iitb-english-hindi", subset_len = None, max_len = 300, token_size_data = "train_token_size.csv")
