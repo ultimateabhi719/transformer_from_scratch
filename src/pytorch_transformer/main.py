@@ -13,36 +13,6 @@ from .tokenizer import load_tokenizers
 from .transformer import Transformer
 from .dataset import TransformerDataset
 
-model_params = {
-    'd_model' : 512,
-    'num_heads' : 8,
-    'num_layers' : 6,
-    'd_ff' : 2048,
-    'max_seq_length' : 1024,
-    'dropout' : 0.1
-    }
-
-train_params = {
-    # 'dataset_path' : "cfilt/iitb-english-hindi",
-    'dataset_path' : ['wmt14', 'de-en'],
-    'lang_from' : 'de',
-    'lang_to' : 'en',
-    'max_len' : 300,
-    'subset' : range(50),
-    'subset_eval' : range(30),
-
-    'learning_rate' : 1e-4,
-    'epochs' : 100,
-    'batch_size' : 20,
-    'save_freq' : 5000,
-
-    'save_prefix' : 'runs/test4/',
-    'save_path' : "transformer_epoch_{}_batch_{}.pth",
-    'resume_path' : None#'runs/test2/transformer_epoch_2_batch_N.pth'
-}
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 def save_model(x0, model, optimizer, save_path):
     torch.save({
             'x0': x0,
@@ -50,7 +20,7 @@ def save_model(x0, model, optimizer, save_path):
             'optimizer_state_dict': optimizer.state_dict(),
             }, save_path)
 
-def train_one_epoch(model, train_loader, criterion, optimizer, epoch=0, save_path="transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None, x0 = 0):
+def train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=0, save_path="transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None, x0 = 0):
     model.train();
 
     pbar = tqdm(train_loader)
@@ -90,18 +60,18 @@ def train_one_epoch(model, train_loader, criterion, optimizer, epoch=0, save_pat
 
     return epoch_loss/len(train_loader)
 
-def train_model(model, train_loader, eval_loader, criterion, ent, epochs=10, save_path="transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None, 
+def train_model(model, device, lr, train_loader, eval_loader, criterion, ent, epochs=10, save_path="transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None, 
     resume_dict = {'x0':0, 'optimizer_state_dict':None}):
 
     x0 = resume_dict['x0']
-    optimizer = optim.Adam(model.parameters(), lr=train_params['learning_rate'], betas=(0.9, 0.98), eps=1e-9)
+    optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-9)
     if resume_dict['optimizer_state_dict']:
         optimizer.load_state_dict(resume_dict['optimizer_state_dict'])
 
     model.train();
 
     for epoch in range(epochs):
-        train_loss = train_one_epoch(model, train_loader, criterion, optimizer, epoch=epoch, save_path=save_path, save_freq = save_freq, log_writer = log_writer, x0 = x0)
+        train_loss = train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=epoch, save_path=save_path, save_freq = save_freq, log_writer = log_writer, x0 = x0)
         val_loss = evaluate_model(model, eval_loader, criterion, ent, print_out = False, device = device)
         if log_writer:
             log_writer.add_scalar('val loss', val_loss, x0 + epoch * len(train_loader))
@@ -150,7 +120,7 @@ def collate_tokens(batch, hit, ent):
 
     return out
 
-def main():
+def main(model_params, train_params, device):
     save_path = train_params['save_prefix']+train_params['save_path']
     lang_from = train_params['lang_from']
     lang_to = train_params['lang_to']
@@ -183,7 +153,7 @@ def main():
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
 
     writer = SummaryWriter(train_params['save_prefix'])
-    train_model(model, train_loader, val_loader, criterion, en_tokenizer,
+    train_model(model, device, train_params['learning_rate'], train_loader, val_loader, criterion, en_tokenizer,
         epochs=train_params['epochs'], 
         save_path=save_path, 
         save_freq=train_params['save_freq'], 
