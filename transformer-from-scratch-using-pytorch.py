@@ -174,6 +174,7 @@ class Transformer(nn.Module):
         tgt_mask = tgt_mask & nopeak_mask.to(self.device)
         return src_mask, tgt_mask
 
+    @torch.no_grad()
     def decode(self, src, bos_token_id, eos_token_id, mask=None, max_dec_length = 25):
         """
         for inference
@@ -335,7 +336,8 @@ def train_model(model, hi_tokenizer, en_tokenizer, train_loader, criterion, epoc
         
 
 # # Evaluate
-def evaluate_model(model, hi_tokenizer, en_tokenizer, data_loader, criterion, print_out = False):
+@torch.no_grad()
+def evaluate_model(model, hi_tokenizer, en_tokenizer, data_loader, criterion, print_out = False, device = 'cuda:0'):
     model.eval()
     num_batches = len(data_loader)
 
@@ -397,7 +399,7 @@ if __name__ == '__main__':
     ## Load Model
     model.load_state_dict(torch.load(save_path.format(epochs-1,'N')))
 
-    avg_loss = evaluate_model(model, hi_tokenizer, en_tokenizer, val_loader, criterion, print_out = False)
+    avg_loss = evaluate_model(model, hi_tokenizer, en_tokenizer, val_loader, criterion, print_out = False, device = device)
 
     print('eval_loss :', avg_loss)
 
