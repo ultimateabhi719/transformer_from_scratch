@@ -177,6 +177,7 @@ class Transformer(nn.Module):
         tgt_mask = tgt_mask & nopeak_mask.to(tgt_mask.device)
         return src_mask, tgt_mask
 
+    @torch.no_grad()
     def decode(self, src, bos_token_id, eos_token_id, mask=None, max_dec_length = 25):
         """
         for inference
@@ -305,7 +306,7 @@ def prepare_dataloader(dataset, rank, world_size, batch_size=32, pin_memory=Fals
     return dataloader
 
 def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokenizer, 
-    criterion, bs=None, epochs=10, save_path = "./transformer_epoch_{}_batch_{}.pth", save_freq = 40000, log_path = None, shuffle = True):
+    criterion, lr = 1e-4, bs=None, epochs=10, save_path = "./transformer_epoch_{}_batch_{}.pth", save_freq = 40000, log_path = None, shuffle = True):
     assert bs is not None
 
     if log_path and rank == 0:
@@ -325,7 +326,7 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
     # find_unused_parameters=True instructs DDP to find unused output of the forward() function of any module in the model
     model = DDP(model, device_ids=[rank], output_device=rank, find_unused_parameters=True)
 
-    optimizer = optim.Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-9)
+    optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-9)
 
     model.train();
 
@@ -373,6 +374,7 @@ def train_model(rank, world_size, dataset, transformer, hi_tokenizer, en_tokeniz
     
 
 # # Evaluate
+@torch.no_grad()
 def evaluate_model(model, hi_tokenizer, en_tokenizer, data_loader, criterion, print_out = False):
     model.eval()
     num_batches = len(data_loader)
@@ -413,13 +415,15 @@ if __name__ == '__main__':
     max_seq_length = 1024
     dropout = 0.1
 
+    lr = 1e-5
     epochs = 10
     bs = 24 # batch size
-    save_prefix = 'runs/ddp_max_tokens_300'
+    save_prefix = 'runs/ddp_max_tokens_300_resume1_lr_1e-5'
     save_path = save_prefix+"/transformer_epoch_{}_batch_{}.pth"
     save_freq = 10000
 
-    resume_path = 'runs/ddp_whole_dataset/transformer_epoch_1_batch_N.pth'
+    # resume_path = 'runs/ddp_whole_dataset/transformer_epoch_1_batch_N.pth'
+    resume_path = 'runs/ddp_max_tokens_300_lr_5e-4/transformer_epoch_2_batch_N.pth'
 
 
     transformer = Transformer(src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, 
@@ -433,11 +437,11 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
 
-    world_size = torch.cuda.device_count()
+    world_size = 1#torch.cuda.device_count()
     print(f"using {world_size} GPUs.")
     mp.spawn(
         train_model,
-        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, bs, epochs, save_path, save_freq, save_prefix, True),
+        args=(world_size, dataset['train'], transformer, hi_tokenizer, en_tokenizer, criterion, lr, bs, epochs, save_path, save_freq, save_prefix, True),
         nprocs=world_size
     )
 
