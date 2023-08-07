@@ -51,6 +51,7 @@ def train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=0, 
         if log_writer:
             log_writer.add_scalar('training loss', loss.item(), x0 + epoch * len(train_loader) + batch_idx)
             log_writer.add_scalar('hi_en seq length', hi_input.shape[1]+en_output.shape[1], x0 + epoch * len(train_loader) + batch_idx)
+            # log_writer.add_embedding("final embedding", model.fc.weight, global_step = x0 + epoch * len(train_loader) + batch_idx)
 
     if len(train_loader)%save_freq!=0:
         epoch_loss += running_loss
@@ -130,7 +131,9 @@ def main(model_params, train_params, device):
                         pad_token_src = hi_tokenizer.pad_token_id, 
                         pad_token_tgt = en_tokenizer.pad_token_id).to(device)
     if train_params['resume_path']:
-        resume_dict = torch.load(train_params['resume_path'])
+        resume_dict = torch.load(train_params['resume_path']) 
+        if train_params['fresh_init']:
+            resume_dict.update({'x0':0, 'optimizer_state_dict':None})
         model.load_state_dict(resume_dict['model_state_dict'])
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)

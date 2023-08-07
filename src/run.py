@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.7
 # coding: utf-8
 
+import os
 import torch
 
 import pytorch_transformer
@@ -21,7 +22,7 @@ if __name__ == '__main__':
         'lang_from' : 'de',
         'lang_to' : 'en',
         'max_len' : 200,
-        'subset' : None,#range(50),
+        'subset' : range(100000),
         'subset_eval' : None,#range(8),
 
         'learning_rate' : 1e-4,
@@ -29,14 +30,20 @@ if __name__ == '__main__':
         'batch_size' : 36,
         'save_freq' : 10000,
 
-        'save_prefix' : 'runs/de_en_run0',
+        'save_prefix' : 'runs/de_en_subset100k/',
         'save_path' : "transformer_epoch_{}_batch_{}.pth",
-        'resume_path' : None,#'runs/test2/transformer_epoch_2_batch_N.pth',
+        'resume_path' : None,#'runs/de_en_run0/transformer_epoch_0_batch_9999.pth',
+        'fresh_init' : True,
 
         'batch_size_val' : 20,
         'batch_size_test' : 20
     }
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
+
+    os.makedirs(train_params['save_prefix'], exist_ok=True)
+    torch.save([model_params,train_params],train_params['save_prefix']+'params.pth')
+
+    # params = torch.load(train_params['save_prefix']+"params.pth")
 
     pytorch_transformer.main(model_params, train_params, device)
