@@ -2,25 +2,29 @@
 import os
 import pandas as pd
 
+from tqdm.auto import tqdm
+tqdm.pandas()
+
 import torch
 from torch.utils.data import Dataset
 from datasets import load_dataset
 
 def _explore_dataset(dataset, hi_tokenizer, en_tokenizer, csv_len = None):
     if csv_len is not None and os.path.exists(csv_len):
-        return
+        return pd.read_csv(csv_len)
 
     # dataset = load_dataset(dataset_path)['train']
     hi_tokenizer, lang_from = hi_tokenizer
-    en_tokenizer, lang_from = en_tokenizer
+    en_tokenizer, lang_to = en_tokenizer
 
     df = pd.DataFrame.from_dict(dataset)
-    df['hi'] = df.translation.apply( lambda x:x[lang_from])
-    df['en'] = df.translation.apply( lambda x:x[lang_to])
 
-    df.hi = df.hi.apply(lambda x:hi_tokenizer(x, padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1])
-    df.en = df.en.apply(lambda x:en_tokenizer(x, padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1])
+    def num_tokens(x):
+        hi_len = hi_tokenizer(x[lang_from], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1]
+        en_len = en_tokenizer(x[lang_to], padding=True, truncation=True, return_tensors="pt")['input_ids'].shape[1]
+        return hi_len, en_len
 
+    df['hi'], df['en'] = zip(*df.translation.progress_apply(num_tokens))
     df['hi_en'] = df['hi'] + df['en']
     df = df[['hi','en','hi_en']].sort_values('hi_en', ascending=False)
     df['index'] = df.index

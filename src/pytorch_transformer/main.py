@@ -150,7 +150,7 @@ def main(model_params, train_params, device):
                                         max_len = None, 
                                         seqlen_csv = None, 
                                         subset = train_params['subset_eval'])
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=train_params['batch_size_val'], shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
 
     writer = SummaryWriter(train_params['save_prefix'])
     train_model(model, device, train_params['learning_rate'], train_loader, val_loader, criterion, en_tokenizer,
@@ -170,7 +170,7 @@ def main(model_params, train_params, device):
                                         max_len = None, 
                                         seqlen_csv = None, 
                                         subset = None)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=4, shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=train_params['batch_size_test'], shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
     avg_loss = evaluate_model(model, test_loader, criterion, en_tokenizer, print_out = False, device = device)
     print('test_loss :', avg_loss)
 

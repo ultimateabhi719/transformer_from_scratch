@@ -20,20 +20,23 @@ if __name__ == '__main__':
         'dataset_path' : ['wmt14', 'de-en'],
         'lang_from' : 'de',
         'lang_to' : 'en',
-        'max_len' : 300,
-        'subset' : range(50),
-        'subset_eval' : range(8),
+        'max_len' : 200,
+        'subset' : None,#range(50),
+        'subset_eval' : None,#range(8),
 
         'learning_rate' : 1e-4,
-        'epochs' : 100,
-        'batch_size' : 20,
-        'save_freq' : 5000,
+        'epochs' : 20,
+        'batch_size' : 36,
+        'save_freq' : 10000,
 
-        'save_prefix' : 'runs/test4/',
+        'save_prefix' : 'runs/de_en_run0',
         'save_path' : "transformer_epoch_{}_batch_{}.pth",
-        'resume_path' : None#'runs/test2/transformer_epoch_2_batch_N.pth'
+        'resume_path' : None,#'runs/test2/transformer_epoch_2_batch_N.pth',
+
+        'batch_size_val' : 20,
+        'batch_size_test' : 20
     }
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    
+
     pytorch_transformer.main(model_params, train_params, device)
