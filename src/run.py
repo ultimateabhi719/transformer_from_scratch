@@ -20,8 +20,8 @@ if __name__ == '__main__':
         # 'dataset_path' : "cfilt/iitb-english-hindi",
         'save_format' : "transformer_epoch_{}_batch_{}.pth",
         'dataset_path' : ['wmt14', 'de-en'],
-        'lang_from' : 'de',
-        'lang_to' : 'en',
+        'tokenizers' : {'path_hi':"dbmdz/bert-base-german-cased", 'path_en':"bert-base-uncased"},
+        'lang' : ('de','en'), #(from-language, to-language)
         'max_len' : 28,
         'subset' : None,
         'subset_eval' : range(40),

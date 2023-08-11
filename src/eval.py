@@ -24,7 +24,7 @@ if __name__ == '__main__':
 
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
-    model_params, _ = torch.load(os.path.join(args.resume_prefix,"params.pth")) 
+    model_params, train_params = torch.load(os.path.join(args.resume_prefix,"params.pth")) 
     print()
     print("model params:", model_params)
 
@@ -32,7 +32,7 @@ if __name__ == '__main__':
     resume_path = nsed(glob.glob(resume_path))[-1]
     print(f"loading model {resume_path} ..")
 
-    hi_tokenizer, en_tokenizer = pt.tokenizer.load_tokenizers()
+    hi_tokenizer, en_tokenizer = pt.tokenizer.load_tokenizers(**train_params['tokenizers'])
     model = pt.Transformer(len(hi_tokenizer), len(en_tokenizer), **model_params, 
                         pad_token_src = hi_tokenizer.pad_token_id, 
                         pad_token_tgt = en_tokenizer.pad_token_id)

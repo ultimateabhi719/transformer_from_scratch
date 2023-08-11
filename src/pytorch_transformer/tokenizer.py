@@ -38,7 +38,7 @@ def _train_tokenizer(dataset_path, lang_from = 'hi', lang_to = 'en', batch_size=
     return hi_tokenizer, en_tokenizer
 
 
-def load_tokenizers(path_hi="dbmdz/bert-base-german-cased", path_en="bert-base-uncased"):
+def load_tokenizers(path_hi=None, path_en=None):
     """
     Load Tokenizers from saved
         path_hi = "trained_tokenizers/hi-tokenizer"

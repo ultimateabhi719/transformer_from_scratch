@@ -165,10 +165,10 @@ def collate_tokens(batch, hit, ent):
 
 def main(model_params, train_params, device):
     save_path = os.path.join(train_params['save_prefix'],train_params['save_format'])
-    lang_from = train_params['lang_from']
-    lang_to = train_params['lang_to']
+    lang_from = train_params['lang'][0]
+    lang_to = train_params['lang'][1]
 
-    hi_tokenizer, en_tokenizer = load_tokenizers()
+    hi_tokenizer, en_tokenizer = load_tokenizers(**train_params['tokenizers'])
     model = Transformer(len(hi_tokenizer), len(en_tokenizer), **model_params, 
                         pad_token_src = hi_tokenizer.pad_token_id, 
                         pad_token_tgt = en_tokenizer.pad_token_id).to(device)
