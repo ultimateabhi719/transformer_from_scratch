@@ -175,7 +175,7 @@ def main(model_params, train_params, device):
     if train_params['resume_dir']:
         resume_file = natsorted(glob.glob(os.path.join(train_params['resume_dir'],train_params['save_format'].format('*','*'))))[-1]
         print(f"loading init model from {resume_file}..")
-        resume_dict = torch.load(resume_file) 
+        resume_dict = torch.load(resume_file, map_location=device) 
         if train_params['fresh_init']:
             resume_dict.update({'x0':0, 'optimizer_state_dict':None})
         model.load_state_dict(resume_dict['model_state_dict'])

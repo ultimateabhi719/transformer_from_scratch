@@ -36,7 +36,7 @@ if __name__ == '__main__':
     model = pt.Transformer(len(hi_tokenizer), len(en_tokenizer), **model_params, 
                         pad_token_src = hi_tokenizer.pad_token_id, 
                         pad_token_tgt = en_tokenizer.pad_token_id)
-    model.load_state_dict(torch.load(resume_path)['model_state_dict'])
+    model.load_state_dict(torch.load(resume_path, map_location=device)['model_state_dict'])
     model=model.to(device)
 
     if args.eval_dataset:

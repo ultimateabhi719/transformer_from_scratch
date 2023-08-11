@@ -43,7 +43,7 @@ if __name__ == '__main__':
     device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
 
     os.makedirs(train_params['save_prefix'], exist_ok=True)
-    torch.save([model_params,train_params],train_params['save_prefix']+'params.pth')
+    torch.save([model_params,train_params],os.path.join(train_params['save_prefix'],'params.pth'))
 
     # params = torch.load(train_params['save_prefix']+"params.pth")
 
