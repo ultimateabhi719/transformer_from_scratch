@@ -1,5 +1,6 @@
 
 import os
+import sys
 import pandas as pd
 
 from tqdm.auto import tqdm
@@ -54,9 +55,13 @@ class TransformerDataset(Dataset):
             self.dataset = torch.utils.data.Subset(self.dataset, subset)
         
     def __getitem__(self,index):
-        hi_tokens = self.hi_tokenizer(self.dataset[index]['translation'][self.lang_from], padding=True, truncation=True, return_tensors="pt")
-        en_tokens = self.en_tokenizer(self.dataset[index]['translation'][self.lang_to], padding=True, truncation=True, return_tensors="pt")
-
+        try:
+            hi_tokens = self.hi_tokenizer(self.dataset[index]['translation'][self.lang_from], padding=True, truncation=True, return_tensors="pt")
+            en_tokens = self.en_tokenizer(self.dataset[index]['translation'][self.lang_to], padding=True, truncation=True, return_tensors="pt")
+        except IndexError as er:
+            import ipdb; ipdb.set_trace()
+            import traceback
+            traceback.print_exception(*sys.exc_info())
         return {'hi':hi_tokens, 'en':en_tokens}
     
     def __len__(self):

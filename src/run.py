@@ -21,19 +21,20 @@ if __name__ == '__main__':
         'dataset_path' : ['wmt14', 'de-en'],
         'lang_from' : 'de',
         'lang_to' : 'en',
-        'max_len' : 200,
-        'subset' : range(100000),
-        'subset_eval' : None,#range(8),
+        'max_len' : 30,
+        'subset' : range(340000),
+        'subset_eval' : range(40),
 
         'learning_rate' : 1e-4,
-        'epochs' : 20,
-        'batch_size' : 36,
-        'save_freq' : 10000,
+        'epochs' : 40,
+        'batch_size' : 84,
+        'save_freq' : 10000, #batches
+        'logwt_freq' : 400, #batches # set to 0 to stop weight logging
 
-        'save_prefix' : 'runs/de_en_subset100k/',
+        'save_prefix' : 'runs/de_en_maxlen30_subset340k_log/',
         'save_path' : "transformer_epoch_{}_batch_{}.pth",
-        'resume_path' : None,#'runs/de_en_run0/transformer_epoch_0_batch_9999.pth',
-        'fresh_init' : True,
+        'resume_path' : 'runs/de_en_subset62k_log4/transformer_epoch_14_batch_N.pth',
+        'fresh_init' : False,
 
         'batch_size_val' : 20,
         'batch_size_test' : 20

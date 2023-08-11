@@ -20,13 +20,48 @@ def save_model(x0, model, optimizer, save_path):
             'optimizer_state_dict': optimizer.state_dict(),
             }, save_path)
 
-def train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=0, save_path="transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None, x0 = 0):
+
+def log_weights(log_writer, model, step):
+
+    log_writer.add_embedding(tag=f'enc_embed',mat=model.encoder_embedding.weight.detach().cpu().numpy(),global_step=step)
+    log_writer.add_embedding(tag=f'dec_embed',mat=model.decoder_embedding.weight.detach().cpu().numpy(),global_step=step)
+
+    for i, enc in enumerate(model.encoder_layers):
+        log_writer.add_histogram(f'enc{i}_Wq',enc.self_attn.W_q.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'enc{i}_Wk',enc.self_attn.W_k.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'enc{i}_Wv',enc.self_attn.W_v.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'enc{i}_Wo',enc.self_attn.W_o.weight.flatten().detach().cpu().numpy(),step)
+
+        log_writer.add_histogram(f'enc{i}_fc1',enc.feed_forward.fc1.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'enc{i}_fc2',enc.feed_forward.fc2.weight.flatten().detach().cpu().numpy(),step)
+
+    for i, dec in enumerate(model.decoder_layers):
+        log_writer.add_histogram(f'dec{i}_selfAttn_Wq',dec.self_attn.W_q.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'dec{i}_selfAttn_Wk',dec.self_attn.W_k.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'dec{i}_selfAttn_Wv',dec.self_attn.W_v.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'dec{i}_selfAttn_Wo',dec.self_attn.W_o.weight.flatten().detach().cpu().numpy(),step)
+
+        log_writer.add_histogram(f'dec{i}_crossAttn_Wq',dec.cross_attn.W_q.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'dec{i}_crossAttn_Wk',dec.cross_attn.W_k.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'dec{i}_crossAttn_Wv',dec.cross_attn.W_v.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'dec{i}_crossAttn_Wo',dec.cross_attn.W_o.weight.flatten().detach().cpu().numpy(),step)
+
+        log_writer.add_histogram(f'dec{i}_fc1',dec.feed_forward.fc1.weight.flatten().detach().cpu().numpy(),step)
+        log_writer.add_histogram(f'dec{i}_fc2',dec.feed_forward.fc2.weight.flatten().detach().cpu().numpy(),step)
+
+    log_writer.add_histogram('enc_embed',model.encoder_embedding.weight.flatten().detach().cpu().numpy(),step)
+    log_writer.add_histogram('dec_embed',model.decoder_embedding.weight.flatten().detach().cpu().numpy(),step)
+    log_writer.add_histogram('fc',model.fc.weight.flatten().detach().cpu().numpy(),step)
+
+def train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=0, save_path="transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None, logwt_freq = 0, x0 = 0):
     model.train();
 
     pbar = tqdm(train_loader)
     epoch_loss = 0
     running_loss = 0
     for batch_idx, data in enumerate(pbar):
+        step = x0 + epoch * len(train_loader) + batch_idx + 1
+
         hi_input = data['hi']['input_ids'].to(device)
         hi_masks = data['hi']['attention_mask'].to(device)
         
@@ -49,19 +84,20 @@ def train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=0, 
             running_loss = 0
 
         if log_writer:
-            log_writer.add_scalar('training loss', loss.item(), x0 + epoch * len(train_loader) + batch_idx)
-            log_writer.add_scalar('hi_en seq length', hi_input.shape[1]+en_output.shape[1], x0 + epoch * len(train_loader) + batch_idx)
-            # log_writer.add_embedding("final embedding", model.fc.weight, global_step = x0 + epoch * len(train_loader) + batch_idx)
+            log_writer.add_scalar('training loss', loss.item(), step)
+            log_writer.add_scalar('hi_en seq length', hi_input.shape[1]+en_output.shape[1], step)
+            # log_writer.add_embedding("final embedding", model.fc.weight, global_step = step)
+            if logwt_freq and step%logwt_freq==0:
+                log_weights(log_writer, model, step//logwt_freq )
 
-    if len(train_loader)%save_freq!=0:
-        epoch_loss += running_loss
+    epoch_loss += running_loss
 
     save_model(x0 + epoch * len(train_loader) + batch_idx, model, optimizer, save_path.format(epoch,'N'))
     # torch.save(model.state_dict(), save_path.format(epoch,'N'))
 
     return epoch_loss/len(train_loader)
 
-def train_model(model, device, lr, train_loader, eval_loader, criterion, ent, epochs=10, save_path="transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None, 
+def train_model(model, device, lr, train_loader, eval_loader, criterion, ent, epochs=10, save_path="transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None, logwt_freq = 0,
     resume_dict = {'x0':0, 'optimizer_state_dict':None}):
 
     x0 = resume_dict['x0']
@@ -71,8 +107,11 @@ def train_model(model, device, lr, train_loader, eval_loader, criterion, ent, ep
 
     model.train();
 
+    if log_writer and logwt_freq:
+        log_weights(log_writer, model, x0)
+
     for epoch in range(epochs):
-        train_loss = train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=epoch, save_path=save_path, save_freq = save_freq, log_writer = log_writer, x0 = x0)
+        train_loss = train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=epoch, save_path=save_path, save_freq = save_freq, log_writer = log_writer, logwt_freq = logwt_freq, x0 = x0)
         val_loss = evaluate_model(model, eval_loader, criterion, ent, print_out = False, device = device)
         if log_writer:
             log_writer.add_scalar('val loss', val_loss, x0 + epoch * len(train_loader))
@@ -161,6 +200,7 @@ def main(model_params, train_params, device):
         save_path=save_path, 
         save_freq=train_params['save_freq'], 
         log_writer = writer,
+        logwt_freq = train_params['logwt_freq'],
         resume_dict = resume_dict if train_params['resume_path'] else {'x0':0, 'optimizer_state_dict':None})
     writer.close()
 
