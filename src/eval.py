@@ -22,7 +22,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
 
-    device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
     model_params, _ = torch.load(os.path.join(args.resume_prefix,"params.pth")) 
     print()
@@ -35,9 +35,9 @@ if __name__ == '__main__':
     hi_tokenizer, en_tokenizer = pt.tokenizer.load_tokenizers()
     model = pt.Transformer(len(hi_tokenizer), len(en_tokenizer), **model_params, 
                         pad_token_src = hi_tokenizer.pad_token_id, 
-                        pad_token_tgt = en_tokenizer.pad_token_id).to(device)
+                        pad_token_tgt = en_tokenizer.pad_token_id)
     model.load_state_dict(torch.load(resume_path)['model_state_dict'])
-
+    model=model.to(device)
 
     if args.eval_dataset:
         test_dataset = pt.TransformerDataset( ['wmt14', 'de-en'], 
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     else:
         assert args.input_text is not None
         hi = hi_tokenizer(args.input_text, padding=True, truncation=True, return_tensors="pt") 
-        en = en_tokenizer('English', padding=True, truncation=True, return_tensors="pt") 
+        en = en_tokenizer('Google\'s service, offered free of charge, instantly translates words, phrases, and web pages between English and over 100 other languages.', padding=True, truncation=True, return_tensors="pt") 
         test_loader = torch.utils.data.DataLoader([{'hi':hi, 'en':en}], batch_size=1, shuffle=False, collate_fn = lambda b:pt.collate_tokens(b, hi_tokenizer, en_tokenizer))
 
     criterion = torch.nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)

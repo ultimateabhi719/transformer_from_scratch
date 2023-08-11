@@ -1,8 +1,11 @@
 #!/usr/bin/env python3.7
 # coding: utf-8
 
-from tqdm.auto import tqdm
+import os
+import glob
+from natsort import natsorted
 import itertools
+from tqdm.auto import tqdm
 
 import torch
 import torch.nn as nn
@@ -161,7 +164,7 @@ def collate_tokens(batch, hit, ent):
     return out
 
 def main(model_params, train_params, device):
-    save_path = train_params['save_prefix']+train_params['save_path']
+    save_path = os.path.join(train_params['save_prefix'],train_params['save_format'])
     lang_from = train_params['lang_from']
     lang_to = train_params['lang_to']
 
@@ -169,11 +172,15 @@ def main(model_params, train_params, device):
     model = Transformer(len(hi_tokenizer), len(en_tokenizer), **model_params, 
                         pad_token_src = hi_tokenizer.pad_token_id, 
                         pad_token_tgt = en_tokenizer.pad_token_id).to(device)
-    if train_params['resume_path']:
-        resume_dict = torch.load(train_params['resume_path']) 
+    if train_params['resume_dir']:
+        resume_file = natsorted(glob.glob(os.path.join(train_params['resume_dir'],train_params['save_format'].format('*','*'))))[-1]
+        print(f"loading init model from {resume_file}..")
+        resume_dict = torch.load(resume_file) 
         if train_params['fresh_init']:
             resume_dict.update({'x0':0, 'optimizer_state_dict':None})
         model.load_state_dict(resume_dict['model_state_dict'])
+    else:
+        resume_dict = {'x0':0, 'optimizer_state_dict':None}
 
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
 
@@ -201,7 +208,7 @@ def main(model_params, train_params, device):
         save_freq=train_params['save_freq'], 
         log_writer = writer,
         logwt_freq = train_params['logwt_freq'],
-        resume_dict = resume_dict if train_params['resume_path'] else {'x0':0, 'optimizer_state_dict':None})
+        resume_dict = resume_dict)
     writer.close()
 
     # ## Load Model

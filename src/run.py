@@ -18,22 +18,22 @@ if __name__ == '__main__':
 
     train_params = {
         # 'dataset_path' : "cfilt/iitb-english-hindi",
+        'save_format' : "transformer_epoch_{}_batch_{}.pth",
         'dataset_path' : ['wmt14', 'de-en'],
         'lang_from' : 'de',
         'lang_to' : 'en',
-        'max_len' : 30,
-        'subset' : range(340000),
+        'max_len' : 28,
+        'subset' : None,
         'subset_eval' : range(40),
 
         'learning_rate' : 1e-4,
         'epochs' : 40,
-        'batch_size' : 84,
+        'batch_size' : 648,
         'save_freq' : 10000, #batches
-        'logwt_freq' : 400, #batches # set to 0 to stop weight logging
+        'logwt_freq' : 175, #batches # set to 0 to stop weight logging
 
-        'save_prefix' : 'runs/de_en_maxlen30_subset340k_log/',
-        'save_path' : "transformer_epoch_{}_batch_{}.pth",
-        'resume_path' : 'runs/de_en_subset62k_log4/transformer_epoch_14_batch_N.pth',
+        'save_prefix' : 'runs/de_en_maxlen28_log3',
+        'resume_dir' : 'runs/de_en_maxlen28_log2',
         'fresh_init' : False,
 
         'batch_size_val' : 20,
