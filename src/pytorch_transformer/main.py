@@ -23,8 +23,8 @@ def save_model(x0, model, optimizer, save_path):
 
 def log_weights(log_writer, model, step):
 
-    log_writer.add_embedding(tag=f'enc_embed',mat=model.encoder_embedding.weight.detach().cpu().numpy(),global_step=step)
-    log_writer.add_embedding(tag=f'dec_embed',mat=model.decoder_embedding.weight.detach().cpu().numpy(),global_step=step)
+    # log_writer.add_embedding(tag=f'enc_embed',mat=model.encoder_embedding.weight.detach().cpu().numpy(),global_step=step)
+    # log_writer.add_embedding(tag=f'dec_embed',mat=model.decoder_embedding.weight.detach().cpu().numpy(),global_step=step)
 
     for i, enc in enumerate(model.encoder_layers):
         log_writer.add_histogram(f'enc{i}_Wq',enc.self_attn.W_q.weight.flatten().detach().cpu().numpy(),step)
@@ -189,8 +189,8 @@ def main(model_params, train_params, device):
     val_dataset = TransformerDataset( train_params['dataset_path'], 
                                         'validation', 
                                         (hi_tokenizer,lang_from), (en_tokenizer,lang_to), 
-                                        max_len = None, 
-                                        seqlen_csv = None, 
+                                        max_len = train_params['max_len'], 
+                                        seqlen_csv = "val_token_size.csv", 
                                         subset = train_params['subset_eval'])
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=train_params['batch_size_val'], shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
 
@@ -210,8 +210,8 @@ def main(model_params, train_params, device):
     test_dataset = TransformerDataset( train_params['dataset_path'], 
                                         'test', 
                                         (hi_tokenizer,lang_from), (en_tokenizer,lang_to), 
-                                        max_len = None, 
-                                        seqlen_csv = None, 
+                                        max_len = train_params['max_len'], 
+                                        seqlen_csv = "test_token_size.csv", 
                                         subset = None)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=train_params['batch_size_test'], shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
     avg_loss = evaluate_model(model, test_loader, criterion, en_tokenizer, print_out = False, device = device)
