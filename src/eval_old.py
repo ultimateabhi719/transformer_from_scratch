@@ -4,7 +4,7 @@
 import os
 import argparse
 import glob
-from natsort import natsorted
+from natsort import natsorted as nsed
 
 import torch
 
@@ -24,15 +24,16 @@ if __name__ == '__main__':
 
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
-    model_params, data_params, train_params = torch.load(os.path.join(args.resume_prefix,"params.pth")) 
-
-    print("model params:", model_params,'\n')
+    model_params, train_params = torch.load(os.path.join(args.resume_prefix,"params.pth")) 
+    train_params.update({'tokenizers':{'path_hi':"dbmdz/bert-base-german-cased", 'path_en':"bert-base-uncased"}})
+    print()
+    print("model params:", model_params)
 
     resume_path = os.path.join(args.resume_prefix,"transformer_epoch_{}_batch_{}.pth".format('*','*'))
-    resume_path = natsorted(glob.glob(resume_path))[-1]
+    resume_path = nsed(glob.glob(resume_path))[-1]
     print(f"loading model {resume_path} ..")
 
-    hi_tokenizer, en_tokenizer = pt.tokenizer.load_tokenizers(**data_params['tokenizers'])
+    hi_tokenizer, en_tokenizer = pt.tokenizer.load_tokenizers(**train_params['tokenizers'])
     model = pt.Transformer(len(hi_tokenizer), len(en_tokenizer), **model_params, 
                         pad_token_src = hi_tokenizer.pad_token_id, 
                         pad_token_tgt = en_tokenizer.pad_token_id)
@@ -40,7 +41,6 @@ if __name__ == '__main__':
     model=model.to(device)
 
     if args.eval_dataset:
-        print_out = False
         test_dataset = pt.TransformerDataset( ['wmt14', 'de-en'], 
                                             args.eval_dataset, 
                                             (hi_tokenizer,'de'), (en_tokenizer,'en'), 
@@ -49,13 +49,12 @@ if __name__ == '__main__':
                                             subset = range(10))
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn = lambda b:pt.collate_tokens(b, hi_tokenizer, en_tokenizer))
     else:
-        print_out = True
         assert args.input_text is not None
         hi = hi_tokenizer(args.input_text, padding=True, truncation=True, return_tensors="pt") 
         en = en_tokenizer('Google\'s service, offered free of charge, instantly translates words, phrases, and web pages between English and over 100 other languages.', padding=True, truncation=True, return_tensors="pt") 
         test_loader = torch.utils.data.DataLoader([{'hi':hi, 'en':en}], batch_size=1, shuffle=False, collate_fn = lambda b:pt.collate_tokens(b, hi_tokenizer, en_tokenizer))
 
     criterion = torch.nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
-    avg_loss = pt.evaluate_model(model, test_loader, criterion, en_tokenizer, print_out = print_out, device = device)
+    avg_loss = pt.evaluate_model(model, test_loader, criterion, en_tokenizer, print_out = True, device = device)
 
     print('avg test loss:',avg_loss)

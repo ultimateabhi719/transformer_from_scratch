@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import os
+import copy
 import glob
 from natsort import natsorted
 import itertools
@@ -163,12 +164,12 @@ def collate_tokens(batch, hit, ent):
 
     return out
 
-def main(model_params, train_params, device):
+def main(model_params, data_params, train_params, device):
     save_path = os.path.join(train_params['save_prefix'],train_params['save_format'])
-    lang_from = train_params['lang'][0]
-    lang_to = train_params['lang'][1]
+    lang_from = data_params['lang'][0]
+    lang_to = data_params['lang'][1]
 
-    hi_tokenizer, en_tokenizer = load_tokenizers(**train_params['tokenizers'])
+    hi_tokenizer, en_tokenizer = load_tokenizers(**data_params['tokenizers'])
     model = Transformer(len(hi_tokenizer), len(en_tokenizer), **model_params, 
                         pad_token_src = hi_tokenizer.pad_token_id, 
                         pad_token_tgt = en_tokenizer.pad_token_id).to(device)
@@ -185,19 +186,17 @@ def main(model_params, train_params, device):
     criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
 
 
-    train_dataset = TransformerDataset( train_params['dataset_path'], 
+    train_dataset = TransformerDataset( copy.deepcopy(data_params), 
                                         'train', 
-                                        (hi_tokenizer,lang_from), (en_tokenizer,lang_to), 
+                                        hi_tokenizer, en_tokenizer, 
                                         max_len = train_params['max_len'], 
-                                        seqlen_csv = "train_token_size.csv", 
                                         subset = train_params['subset'])
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=train_params['batch_size'], shuffle=True, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
 
-    val_dataset = TransformerDataset( train_params['dataset_path'], 
+    val_dataset = TransformerDataset( copy.deepcopy(data_params), 
                                         'validation', 
-                                        (hi_tokenizer,lang_from), (en_tokenizer,lang_to), 
+                                        hi_tokenizer, en_tokenizer, 
                                         max_len = train_params['max_len'], 
-                                        seqlen_csv = "val_token_size.csv", 
                                         subset = train_params['subset_eval'])
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=train_params['batch_size_val'], shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
 
@@ -214,11 +213,10 @@ def main(model_params, train_params, device):
     # ## Load Model
     # model.load_state_dict(torch.load(save_path.format(epochs-1,'N')))
 
-    test_dataset = TransformerDataset( train_params['dataset_path'], 
+    test_dataset = TransformerDataset( copy.deepcopy(data_params), 
                                         'test', 
-                                        (hi_tokenizer,lang_from), (en_tokenizer,lang_to), 
+                                        hi_tokenizer, en_tokenizer, 
                                         max_len = train_params['max_len'], 
-                                        seqlen_csv = "test_token_size.csv", 
                                         subset = None)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=train_params['batch_size_test'], shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
     avg_loss = evaluate_model(model, test_loader, criterion, en_tokenizer, print_out = False, device = device)

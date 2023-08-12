@@ -16,25 +16,26 @@ if __name__ == '__main__':
         'dropout' : 0.1
         }
 
+    data_params = { 'dataset_path' : ['local',["data/cvit-pib.hf"]],
+                'tokenizers':{'path_hi':'monsoon-nlp/hindi-bert', 'path_en':'bert-base-uncased'},
+                'lang' : ('hi','en') #(from-language, to-language)
+              }
+
     train_params = {
-        # 'dataset_path' : "cfilt/iitb-english-hindi",
         'save_format' : "transformer_epoch_{}_batch_{}.pth",
-        'dataset_path' : ['wmt14', 'de-en'],
-        'tokenizers' : {'path_hi':"dbmdz/bert-base-german-cased", 'path_en':"bert-base-uncased"},
-        'lang' : ('de','en'), #(from-language, to-language)
-        'max_len' : 28,
+        'max_len' : 76,
         'subset' : None,
-        'subset_eval' : range(40),
+        'subset_eval' : None,
 
         'learning_rate' : 1e-4,
         'epochs' : 40,
-        'batch_size' : 648,
+        'batch_size' : 216,
         'save_freq' : 10000, #batches
         'logwt_freq' : 175, #batches # set to 0 to stop weight logging
 
-        'save_prefix' : 'runs/de_en_maxlen28_log3',
-        'resume_dir' : 'runs/de_en_maxlen28_log2',
-        'fresh_init' : False,
+        'save_prefix' : 'runs/hi_en_maxlen76_cvit_log',
+        'resume_dir' : None,
+        'fresh_init' : True,
 
         'batch_size_val' : 20,
         'batch_size_test' : 20
@@ -43,8 +44,8 @@ if __name__ == '__main__':
     device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
 
     os.makedirs(train_params['save_prefix'], exist_ok=True)
-    torch.save([model_params,train_params],os.path.join(train_params['save_prefix'],'params.pth'))
+    torch.save([model_params, data_params, train_params],os.path.join(train_params['save_prefix'],'params.pth'))
 
     # params = torch.load(train_params['save_prefix']+"params.pth")
 
-    pytorch_transformer.main(model_params, train_params, device)
+    pytorch_transformer.main(model_params, data_params, train_params, device)

@@ -1,4 +1,6 @@
 runs/**
+data/**
+eda/**
 *.csv
 
 # Byte-compiled / optimized / DLL files
