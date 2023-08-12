@@ -1,6 +1,7 @@
 
 import os
 import sys
+import random
 from typing import Dict, Any
 import hashlib
 
@@ -52,7 +53,7 @@ class TransformerDataset(Dataset):
     """
         split : 'train', 'validation', 'test'
     """
-    def __init__(self, data_params, split, hi_tokenizer, en_tokenizer, max_len = None, subset = None):
+    def __init__(self, data_params, split, hi_tokenizer, en_tokenizer, max_len = None, subset = None, randomize_subset=True):
         if data_params['dataset_path'][0] == "local":
             self.dataset = load_from_disk(*data_params['dataset_path'][1])[split]
         else:
@@ -77,6 +78,10 @@ class TransformerDataset(Dataset):
             self.dataset = torch.utils.data.Subset(self.dataset, indices = list(df['index'][(df.hi<=max_len//2) & (df.en<=max_len//2)]))
 
         if subset:
+            if randomize_subset:
+                subset = random.sample(range(len(self.dataset)), subset)
+            else:
+                subset = range(subset)
             self.dataset = torch.utils.data.Subset(self.dataset, subset)
         
     def __getitem__(self,index):

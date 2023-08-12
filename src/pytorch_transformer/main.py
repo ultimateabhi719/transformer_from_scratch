@@ -7,11 +7,14 @@ import glob
 from natsort import natsorted
 import itertools
 from tqdm.auto import tqdm
+import math
 
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
+import optuna
+from optuna.trial import TrialState
 
 from .tokenizer import load_tokenizers
 from .transformer import Transformer
@@ -57,7 +60,7 @@ def log_weights(log_writer, model, step):
     log_writer.add_histogram('dec_embed',model.decoder_embedding.weight.flatten().detach().cpu().numpy(),step)
     log_writer.add_histogram('fc',model.fc.weight.flatten().detach().cpu().numpy(),step)
 
-def train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=0, save_path="transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None, logwt_freq = 0, x0 = 0):
+def train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=0, save_path=None, save_freq = math.inf, log_writer = None, logwt_freq = math.inf, x0 = math.nan):
     model.train();
 
     pbar = tqdm(train_loader)
@@ -82,7 +85,8 @@ def train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=0, 
         running_loss += loss.item()
 
         if (batch_idx+1)%save_freq==0:
-            save_model(x0 + epoch * len(train_loader) + batch_idx, model, optimizer, save_path.format(epoch,batch_idx))
+            if save_path:
+                save_model(x0 + epoch * len(train_loader) + batch_idx, model, optimizer, save_path.format(epoch,batch_idx))
             pbar.set_description(f"Epoch {epoch}: loss {running_loss/save_freq:.3f}")
             epoch_loss += running_loss
             running_loss = 0
@@ -96,22 +100,89 @@ def train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=0, 
 
     epoch_loss += running_loss
 
-    save_model(x0 + epoch * len(train_loader) + batch_idx, model, optimizer, save_path.format(epoch,'N'))
+    if save_path:
+        save_model(x0 + epoch * len(train_loader) + batch_idx, model, optimizer, save_path.format(epoch,'N'))
     # torch.save(model.state_dict(), save_path.format(epoch,'N'))
 
     return epoch_loss/len(train_loader)
 
-def train_model(model, device, lr, train_loader, eval_loader, criterion, ent, epochs=10, save_path="transformer_epoch_{}_batch_{}.pth", save_freq = 2000, log_writer = None, logwt_freq = 0,
+def trial_run(trial, model, device, train_loader, eval_loader, criterion, ent, epochs):
+    optimizer_name = trial.suggest_categorical("optimizer", ["Adam", "RMSprop", "SGD"])
+    lr = trial.suggest_float("lr", 1e-7, 1e-2, log=True)
+    optimizer = getattr(optim, optimizer_name)(model.parameters(), lr=lr)
+
+    for epoch in range(epochs):
+        train_loss = train_one_epoch(model, device, train_loader, criterion, optimizer, epoch=epoch)
+        val_loss = evaluate_model(model, eval_loader, criterion, ent, print_out = False, device = device)
+        print(f"Epoch {epoch}: \n\t\ttrain_loss: {train_loss:.3f}, val_loss: {val_loss:.3f}")
+
+        trial.report(train_loss, epoch)
+
+        # Handle pruning based on the intermediate value.
+        if trial.should_prune():
+            raise optuna.exceptions.TrialPruned()
+
+    return train_loss
+
+def optimize_optimizer(model_params, data_params, train_params, device):
+    hi_tokenizer, en_tokenizer = load_tokenizers(**data_params['tokenizers'])
+    model = Transformer(len(hi_tokenizer), len(en_tokenizer), **model_params, 
+                        pad_token_src = hi_tokenizer.pad_token_id, 
+                        pad_token_tgt = en_tokenizer.pad_token_id).to(device)
+
+
+    train_dataset = TransformerDataset( copy.deepcopy(data_params), 
+                                        'train', 
+                                        hi_tokenizer, en_tokenizer, 
+                                        max_len = train_params['max_len'], 
+                                        subset = train_params['subset'],
+                                        randomize_subset=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=train_params['batch_size'], shuffle=True, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
+
+    val_dataset = TransformerDataset( copy.deepcopy(data_params), 
+                                        'validation', 
+                                        hi_tokenizer, en_tokenizer, 
+                                        max_len = train_params['max_len'], 
+                                        subset = train_params['subset_eval'],
+                                        randomize_subset=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=train_params['batch_size_val'], shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
+
+    criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
+
+    objective = lambda trial:trial_run(trial, model, device, train_loader, val_loader, criterion, en_tokenizer, train_params['epochs'])
+
+    study = optuna.create_study(direction="minimize")
+    study.optimize(objective, n_trials=100, timeout=600)
+
+    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+
+    print("Study statistics: ")
+    print("  Number of finished trials: ", len(study.trials))
+    print("  Number of pruned trials: ", len(pruned_trials))
+    print("  Number of complete trials: ", len(complete_trials))
+
+    print("Best trial:")
+    trial = study.best_trial
+
+    print("  Value: ", trial.value)
+
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print("    {}: {}".format(key, value))
+
+def train_model(model, device, lr, train_loader, eval_loader, criterion, ent, epochs=10, save_path=None, save_freq = math.inf, log_writer = None, logwt_freq = math.inf,
     resume_dict = {'x0':0, 'optimizer_state_dict':None}):
 
     x0 = resume_dict['x0']
-    optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-9)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    # optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-9)
     if resume_dict['optimizer_state_dict']:
         optimizer.load_state_dict(resume_dict['optimizer_state_dict'])
 
     model.train();
 
-    if log_writer and logwt_freq:
+    if log_writer and logwt_freq<math.inf:
         log_weights(log_writer, model, x0)
 
     for epoch in range(epochs):
@@ -165,14 +236,12 @@ def collate_tokens(batch, hit, ent):
     return out
 
 def main(model_params, data_params, train_params, device):
-    save_path = os.path.join(train_params['save_prefix'],train_params['save_format'])
-    lang_from = data_params['lang'][0]
-    lang_to = data_params['lang'][1]
 
     hi_tokenizer, en_tokenizer = load_tokenizers(**data_params['tokenizers'])
     model = Transformer(len(hi_tokenizer), len(en_tokenizer), **model_params, 
                         pad_token_src = hi_tokenizer.pad_token_id, 
                         pad_token_tgt = en_tokenizer.pad_token_id).to(device)
+
     if train_params['resume_dir']:
         resume_file = natsorted(glob.glob(os.path.join(train_params['resume_dir'],train_params['save_format'].format('*','*'))))[-1]
         print(f"loading init model from {resume_file}..")
@@ -183,23 +252,26 @@ def main(model_params, data_params, train_params, device):
     else:
         resume_dict = {'x0':0, 'optimizer_state_dict':None}
 
-    criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
 
 
     train_dataset = TransformerDataset( copy.deepcopy(data_params), 
                                         'train', 
                                         hi_tokenizer, en_tokenizer, 
                                         max_len = train_params['max_len'], 
-                                        subset = train_params['subset'])
+                                        subset = train_params['subset'],
+                                        randomize_subset=True)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=train_params['batch_size'], shuffle=True, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
 
     val_dataset = TransformerDataset( copy.deepcopy(data_params), 
                                         'validation', 
                                         hi_tokenizer, en_tokenizer, 
                                         max_len = train_params['max_len'], 
-                                        subset = train_params['subset_eval'])
+                                        subset = train_params['subset_eval'],
+                                        randomize_subset=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=train_params['batch_size_val'], shuffle=False, collate_fn = lambda b:collate_tokens(b, hi_tokenizer, en_tokenizer))
 
+    save_path = os.path.join(train_params['save_prefix'],train_params['save_format'])
+    criterion = nn.CrossEntropyLoss(ignore_index=en_tokenizer.pad_token_id)
     writer = SummaryWriter(train_params['save_prefix'])
     train_model(model, device, train_params['learning_rate'], train_loader, val_loader, criterion, en_tokenizer,
         epochs=train_params['epochs'], 

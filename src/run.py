@@ -4,7 +4,7 @@
 import os
 import torch
 
-import pytorch_transformer
+import pytorch_transformer as pt
 
 if __name__ == '__main__':
     model_params = {
@@ -27,15 +27,16 @@ if __name__ == '__main__':
         'subset' : None,
         'subset_eval' : None,
 
-        'learning_rate' : 1e-4,
+        'learning_rate' : 3.5e-07,
         'epochs' : 40,
+
         'batch_size' : 216,
         'save_freq' : 10000, #batches
         'logwt_freq' : 175, #batches # set to 0 to stop weight logging
 
-        'save_prefix' : 'runs/hi_en_maxlen76_cvit_log',
-        'resume_dir' : None,
-        'fresh_init' : True,
+        'save_prefix' : 'runs/hi_en_maxlen76_cvit_log1',
+        'resume_dir' : 'runs/hi_en_maxlen76_cvit_log',
+        'fresh_init' : False,
 
         'batch_size_val' : 20,
         'batch_size_test' : 20
@@ -45,7 +46,7 @@ if __name__ == '__main__':
 
     os.makedirs(train_params['save_prefix'], exist_ok=True)
     torch.save([model_params, data_params, train_params],os.path.join(train_params['save_prefix'],'params.pth'))
+    # params = torch.load(os.path.join(train_params['save_prefix'],'params.pth'))
 
-    # params = torch.load(train_params['save_prefix']+"params.pth")
-
-    pytorch_transformer.main(model_params, data_params, train_params, device)
+    pt.main(model_params, data_params, train_params, device)
+    # pt.optimize_optimizer(model_params, data_params, train_params, device)
