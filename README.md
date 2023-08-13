@@ -2,7 +2,7 @@ Transformer Model from Scratch
 
 ![transformer.png](https://github.com/ultimateabhi719/transformer_from_scratch/blob/24927be0521f4d741c1f1b5ad9bde7101c20e787/transformer.png)
 
-The repository implements the transformer model using: 
+The repository implements the transformer model for translation using: 
 - greedy decoding 
 - NLL loss criterion
 
