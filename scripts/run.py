@@ -39,8 +39,8 @@ if __name__ == '__main__':
         'save_freq' : 10000, #batches
         'logwt_freq' : 175, #batches # set to 0 to stop weight logging
 
-        'save_prefix' : 'runs/hi_en_maxlen76_cvit_log2',
-        'resume_dir' : 'runs/hi_en_maxlen76_cvit_log1',
+        'save_prefix' : 'runs/hi_en_maxlen76_cvit_log3',
+        'resume_dir' : 'runs/hi_en_maxlen76_cvit_log2',
         'fresh_init' : False,
 
         'batch_size_val' : 20,

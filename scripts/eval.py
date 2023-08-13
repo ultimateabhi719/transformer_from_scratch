@@ -16,7 +16,7 @@ if __name__ == '__main__':
                         prog='eval.py',
                         description='evaluate translation model',
                         epilog='evaluate model')
-    parser.add_argument('resume_prefix', help='path for saveed model') 
+    parser.add_argument('resume_prefix', help='path for saved model') 
     parser.add_argument('-d','--eval_dataset', help='dataset to evaluate on: train/test/validation') 
     parser.add_argument('-i','--input_text', help='input text (deustche) to translate to english') 
     args = parser.parse_args()

@@ -3,9 +3,9 @@
 
 import os
 import sys
-# sys.path.append("src")
 import glob
 from natsort import natsorted
+import argparse
 
 import torch
 import torch.nn as nn
@@ -45,12 +45,19 @@ class BentoTransformer(nn.Module):
         return self.model(src, tgt, mask = mask)
 
 if __name__=="__main__":
+    parser = argparse.ArgumentParser(
+                        prog='eval.py',
+                        description='evaluate translation model',
+                        epilog='evaluate model')
+    parser.add_argument('resume_dir', help='path/dir for saved model') 
+    parser.add_argument('bento_model_name', help='bento model name') 
+    args = parser.parse_args()
 
-    resume_dir="runs/de_en_maxlen28_log3"
-    bentoTransformer = BentoTransformer(resume_dir=resume_dir)
+    # resume_dir="runs/hi_en_maxlen76_cvit_log2/"
+    bentoTransformer = BentoTransformer(resume_dir=args.resume_dir)
 
     bentoml.pytorch.save_model(
-        "translate_de_en_old",   # model name in the local model store
+        args.bento_model_name,   # model name in the local model store
         bentoTransformer,  # model instance being saved
         labels={    # user-defined labels for managing models in Yatai
             "owner": "ultimateabhi",
@@ -58,10 +65,6 @@ if __name__=="__main__":
         },
         metadata={  # user-defined additional metadata
             "dataset": "wmt14, de-en",
-        },
-        custom_objects={    # save additional user-defined python objects
-            "hi_tokenizer": bentoTransformer.hi_tokenizer,
-            'en_tokenizer': bentoTransformer.en_tokenizer
         },
         signatures={   # model signatures for runner inference
             "predict": {
