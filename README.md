@@ -9,7 +9,7 @@ The repository implements the transformer model for translation using:
 ## Data Training:
 1. Install the pytorch\_transformer package with the following command:
 `pip install -e .`
-2. Change the model parameters, dataset & tokenizer parameters, and the training parameters in the file `scripts/run.py` if needed.
+2. Change the model parameters, dataset & tokenizer parameters, and the training parameters in the file `scripts/run.py` if needed. `data_params['dataset_path']`, `data_params['tokenizers']`, `data_params['lang']` correspond to the hugging face dataset parameters. Use the `exploratory-data-analysis.ipynb` notebook to save text data in hugging face dataset format.
 3. Run scripts/run.py with the `pt.optimize\_optimizer..` line uncommented and `pt.main..` line commented to find out the optimal learning rate and optimizer to use (uses optuna).
 4. Set the lr in train\_params and the optimizer in `train\_model@main.py`
 5. Uncomment back the `pt.main` line and comment the `pt.optimizer\_optimizer` line. Now run `scripts/run.py`
@@ -26,7 +26,7 @@ The repository implements the transformer model for translation using:
 
 
 
-Further Improvements:
+## Further Improvements:
 - variable batch size merging groups of similar length together to increase training speed
 - Take loss = bleu score instead of NLL. To improve performance
 - increase model size
