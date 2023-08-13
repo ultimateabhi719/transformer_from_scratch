@@ -16,6 +16,11 @@ if __name__ == '__main__':
         'dropout' : 0.1
         }
 
+    # data_params = { 'dataset_path' : ['online',['wmt14', 'de-en']],
+    #             'tokenizers':{'path_hi':'dbmdz/bert-base-german-cased', 'path_en':'bert-base-uncased'},
+    #             'lang' : ('de','en') #(from-language, to-language)
+    #           }
+
     data_params = { 'dataset_path' : ['local',["data/cvit-pib.hf"]],
                 'tokenizers':{'path_hi':'monsoon-nlp/hindi-bert', 'path_en':'bert-base-uncased'},
                 'lang' : ('hi','en') #(from-language, to-language)
@@ -34,8 +39,8 @@ if __name__ == '__main__':
         'save_freq' : 10000, #batches
         'logwt_freq' : 175, #batches # set to 0 to stop weight logging
 
-        'save_prefix' : 'runs/hi_en_maxlen76_cvit_log1',
-        'resume_dir' : 'runs/hi_en_maxlen76_cvit_log',
+        'save_prefix' : 'runs/hi_en_maxlen76_cvit_log2',
+        'resume_dir' : 'runs/hi_en_maxlen76_cvit_log1',
         'fresh_init' : False,
 
         'batch_size_val' : 20,
